@@ -1,6 +1,7 @@
 import pygame
 import random
 import json
+import os
 from pygame.locals import *
 
 
@@ -9,6 +10,7 @@ class Game:
         self.screen = screen
         self.scoreboard = scoreboard
         self.level_name = level_name
+        self.screen_width, self.screen_height = screen.get_size()
         self.load_config()
         self.load_assets()
         self.init_game_state()
@@ -23,32 +25,30 @@ class Game:
 
     def load_assets(self):
         self.background = pygame.image.load("assets/images/background.png")
-        self.classmate_img = pygame.image.load("assets/images/classmate.png")
-        self.player_img = pygame.image.load("assets/images/player.png")
+        self.background = pygame.transform.scale(self.background, (self.screen_width, self.screen_height))
 
-        pygame.mixer.music.load("assets/sounds/background.mp3")
-        self.shoot_sound = pygame.mixer.Sound("assets/sounds/shoot.wav")
-        self.hit_sound = pygame.mixer.Sound("assets/sounds/hit.wav")
+        self.classmate_images = []
+        classmates_dir = "assets/images/classmates"
+        for filename in os.listdir(classmates_dir):
+            if filename.endswith(".png"):
+                image = pygame.image.load(os.path.join(classmates_dir, filename))
+                self.classmate_images.append(image)
 
     def init_game_state(self):
         self.score = 0
         self.time_left = self.level_settings["game_time"]
-        self.player_rect = self.player_img.get_rect(center=(400, 300))
         self.classmates = []
         self.bullets = []
         self.running = True
+        self.gun_position = (self.screen_width // 2, self.screen_height - 50)
 
     def run(self):
-        pygame.mixer.music.play(-1)
         clock = pygame.time.Clock()
-
         while self.running:
             self.handle_events()
             self.update()
             self.render()
             clock.tick(60)
-
-        pygame.mixer.music.stop()
         self.handle_game_over()
 
     def handle_events(self):
@@ -56,28 +56,43 @@ class Game:
             if event.type == QUIT:
                 self.running = False
             if event.type == MOUSEBUTTONDOWN and event.button == 1:
-                self.handle_shot(event.pos)
+                self.handle_shot(pygame.mouse.get_pos())
 
-    def handle_shot(self, mouse_pos):
+    def handle_shot(self, target_pos):
+        bullet_speed = 15
+        start_x, start_y = self.gun_position
+        dx = target_pos[0] - start_x
+        dy = target_pos[1] - start_y
+        distance = max(1, (dx ** 2 + dy ** 2) ** 0.5)
+
         self.bullets.append({
-            'start': self.player_rect.center,
-            'target': mouse_pos,
-            'position': list(self.player_rect.center)
+            'pos': [start_x, start_y],
+            'dx': dx / distance * bullet_speed,
+            'dy': dy / distance * bullet_speed,
+            'rect': pygame.Rect(start_x - 4, start_y - 4, 8, 8)
         })
-        self.shoot_sound.play()
 
     def update(self):
         for bullet in self.bullets[:]:
-            dx = bullet['target'][0] - bullet['position'][0]
-            dy = bullet['target'][1] - bullet['position'][1]
-            distance = max(abs(dx), abs(dy))
+            bullet['pos'][0] += bullet['dx']
+            bullet['pos'][1] += bullet['dy']
+            bullet['rect'].center = bullet['pos']
 
-            if distance < 5:
+            if not (0 < bullet['pos'][0] < self.screen_width and 0 < bullet['pos'][1] < self.screen_height):
                 self.bullets.remove(bullet)
                 continue
 
-            bullet['position'][0] += dx * 0.1
-            bullet['position'][1] += dy * 0.1
+            for classmate in self.classmates[:]:
+                if classmate['rect'].colliderect(bullet['rect']):
+                    self.classmates.remove(classmate)
+                    self.score += 10
+                    self.bullets.remove(bullet)
+                    break
+
+        for classmate in self.classmates[:]:
+            classmate['rect'].x += classmate['speed'] * classmate['direction']
+            if classmate['rect'].x < -100 or classmate['rect'].x > self.screen_width + 100:
+                self.classmates.remove(classmate)
 
         if (random.random() < self.level_settings["spawn_rate"] and
                 len(self.classmates) < self.level_settings["max_classmates"]):
@@ -88,39 +103,45 @@ class Game:
             self.running = False
 
     def spawn_classmate(self):
-        spawn_x = random.choice([-50, 850])
-        spawn_y = random.randint(50, 550)
+        side = random.choice(['left', 'right'])
+        image = random.choice(self.classmate_images)
+        speed = self.level_settings["classmate_speed"]
+
         new_classmate = {
-            'rect': pygame.Rect(spawn_x, spawn_y, 50, 50),
-            'speed': self.level_settings["classmate_speed"]
+            'rect': pygame.Rect(-100 if side == 'left' else self.screen_width + 100,
+                                random.randint(50, self.screen_height - 50),
+                                image.get_width(),
+                                image.get_height()),
+            'speed': speed,
+            'direction': 1 if side == 'left' else -1,
+            'image': image
         }
         self.classmates.append(new_classmate)
 
     def render(self):
         self.screen.blit(self.background, (0, 0))
 
-        self.screen.blit(self.player_img, self.player_rect)
-
         for classmate in self.classmates:
-            self.screen.blit(self.classmate_img, classmate['rect'])
+            self.screen.blit(classmate['image'], classmate['rect'])
 
         for bullet in self.bullets:
-            pygame.draw.circle(self.screen, (255, 0, 0), bullet['position'], 4)
+            pygame.draw.circle(self.screen, (255, 0, 0),
+                               (int(bullet['pos'][0]), int(bullet['pos'][1])), 8)
+
+        pygame.draw.circle(self.screen, (100, 100, 100), self.gun_position, 20)
 
         self.draw_ui()
         pygame.display.flip()
 
     def draw_ui(self):
         ui_font = pygame.font.Font(None, 36)
-
-        score_text = ui_font.render(f"Score: {self.score}", True, (255, 255, 255))
-        self.screen.blit(score_text, (10, 10))
-
-        timer_text = ui_font.render(f"Time: {int(self.time_left)}", True, (255, 255, 255))
-        self.screen.blit(timer_text, (10, 50))
-
-        level_text = ui_font.render(f"Level: {self.level_name}", True, (255, 255, 255))
-        self.screen.blit(level_text, (10, 90))
+        texts = [
+            f"Score: {self.score}",
+            f"Time: {int(self.time_left)}",
+            f"Level: {self.level_name}"
+        ]
+        for i, text in enumerate(texts):
+            self.screen.blit(ui_font.render(text, True, (255, 255, 255)), (10, 10 + i * 40))
 
     def handle_game_over(self):
         if self.score > self.scoreboard.get_top_score():

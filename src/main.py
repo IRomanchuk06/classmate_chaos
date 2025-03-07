@@ -6,10 +6,10 @@ from scoreboard import Scoreboard
 
 
 def main():
-    # Initialize Pygame
     pygame.init()
-    screen = pygame.display.set_mode((800, 600))
-    pygame.display.set_caption("Campus Frenzy")
+    screen_size = (1080, 1080)
+    screen = pygame.display.set_mode(screen_size)
+    pygame.display.set_caption("Classmate Chaos")
 
     scoreboard = Scoreboard("assets/config/scores.json")
     menu = MainMenu(screen)
@@ -30,22 +30,22 @@ def main():
 
 
 def show_help_screen(screen):
-    help_font = pygame.font.Font(None, 36)
+    help_font = pygame.font.Font(None, 45)
     lines = [
         "How to Play:",
         "- Left-click to shoot classmates",
-        "- Avoid shooting innocent items",
         "- Complete levels before time runs out",
         "- Higher levels = faster spawn rates",
         "Press ESC to return to menu"
     ]
 
     screen.fill((0, 0, 0))
-    y_offset = 100
+    y_offset = 300
     for line in lines:
         text_surface = help_font.render(line, True, (255, 255, 255))
-        screen.blit(text_surface, (50, y_offset))
-        y_offset += 40
+        text_rect = text_surface.get_rect(center=(540, y_offset))
+        screen.blit(text_surface, text_rect)
+        y_offset += 80
 
     pygame.display.flip()
 
