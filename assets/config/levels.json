@@ -1,0 +1,25 @@
+{
+    "levels": [
+        {
+            "name": "Easy",
+            "spawn_rate": 0.03,
+            "max_classmates": 10,
+            "classmate_speed": 1,
+            "game_time": 60
+        },
+        {
+            "name": "Medium",
+            "spawn_rate": 0.05,
+            "max_classmates": 15,
+            "classmate_speed": 2,
+            "game_time": 45
+        },
+        {
+            "name": "Hard",
+            "spawn_rate": 0.08,
+            "max_classmates": 20,
+            "classmate_speed": 3,
+            "game_time": 30
+        }
+    ]
+}

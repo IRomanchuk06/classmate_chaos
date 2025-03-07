@@ -1,0 +1,5 @@
+{
+    "player_speed": 5,
+    "bullet_speed": 15,
+    "max_bullets": 3
+}
