@@ -2,15 +2,16 @@ import pygame
 import random
 import json
 import os
+import math
 from pygame.locals import *
 
 
 class Game:
     def __init__(self, screen, level_name, scoreboard):
         self.screen = screen
+        self.screen_width, self.screen_height = screen.get_size()
         self.scoreboard = scoreboard
         self.level_name = level_name
-        self.screen_width, self.screen_height = screen.get_size()
         self.load_config()
         self.load_assets()
         self.init_game_state()
@@ -25,9 +26,9 @@ class Game:
 
     def load_assets(self):
         self.background = pygame.image.load("assets/images/background.png")
-        self.background = pygame.transform.scale(self.background, (self.screen_width, self.screen_height))
-
+        self.crosshair = pygame.image.load("assets/images/crosshair.png")
         self.classmate_images = []
+
         classmates_dir = "assets/images/classmates"
         for filename in os.listdir(classmates_dir):
             if filename.endswith(".png"):
@@ -37,18 +38,21 @@ class Game:
     def init_game_state(self):
         self.score = 0
         self.time_left = self.level_settings["game_time"]
-        self.classmates = []
+        self.targets = []
         self.bullets = []
         self.running = True
+        self.spawn_timer = 0
+        self.max_targets = self.level_settings["max_classmates"]
+        self.wave_angle = 0
         self.gun_position = (self.screen_width // 2, self.screen_height - 50)
 
     def run(self):
         clock = pygame.time.Clock()
         while self.running:
+            delta_time = clock.tick(60)
             self.handle_events()
-            self.update()
+            self.update(delta_time)
             self.render()
-            clock.tick(60)
         self.handle_game_over()
 
     def handle_events(self):
@@ -59,76 +63,104 @@ class Game:
                 self.handle_shot(pygame.mouse.get_pos())
 
     def handle_shot(self, target_pos):
-        bullet_speed = 15
-        start_x, start_y = self.gun_position
-        dx = target_pos[0] - start_x
-        dy = target_pos[1] - start_y
-        distance = max(1, (dx ** 2 + dy ** 2) ** 0.5)
+        start_pos = self.gun_position
+        distance = math.hypot(target_pos[0] - start_pos[0], target_pos[1] - start_pos[1])
+        if distance == 0: return
+
+        speed = 15
+        dx = (target_pos[0] - start_pos[0]) / distance
+        dy = (target_pos[1] - start_pos[1]) / distance
 
         self.bullets.append({
-            'pos': [start_x, start_y],
-            'dx': dx / distance * bullet_speed,
-            'dy': dy / distance * bullet_speed,
-            'rect': pygame.Rect(start_x - 4, start_y - 4, 8, 8)
+            'pos': list(start_pos),
+            'target': target_pos,
+            'dx': dx * speed,
+            'dy': dy * speed,
+            'reached': False
         })
 
-    def update(self):
+    def update_bullets(self, delta_time):
         for bullet in self.bullets[:]:
-            bullet['pos'][0] += bullet['dx']
-            bullet['pos'][1] += bullet['dy']
-            bullet['rect'].center = bullet['pos']
+            bullet['pos'][0] += bullet['dx'] * delta_time / 16.667
+            bullet['pos'][1] += bullet['dy'] * delta_time / 16.667
 
-            if not (0 < bullet['pos'][0] < self.screen_width and 0 < bullet['pos'][1] < self.screen_height):
+            target_dist = math.hypot(bullet['pos'][0] - bullet['target'][0],
+                                     bullet['pos'][1] - bullet['target'][1])
+
+            if target_dist < 5 and not bullet['reached']:
+                bullet['reached'] = True
+                hit = False
+                for target in self.targets[:]:
+                    if target['rect'].collidepoint(bullet['target']):
+                        self.targets.remove(target)
+                        self.score += 10
+                        hit = True
+                        break
+                if not hit:
+                    self.score = max(0, self.score - 2)
                 self.bullets.remove(bullet)
-                continue
 
-            for classmate in self.classmates[:]:
-                if classmate['rect'].colliderect(bullet['rect']):
-                    self.classmates.remove(classmate)
-                    self.score += 10
-                    self.bullets.remove(bullet)
-                    break
+    def update_targets(self, delta_time):
+        self.spawn_timer += delta_time
+        self.wave_angle += 0.02
 
-        for classmate in self.classmates[:]:
-            classmate['rect'].x += classmate['speed'] * classmate['direction']
-            if classmate['rect'].x < -100 or classmate['rect'].x > self.screen_width + 100:
-                self.classmates.remove(classmate)
+        if self.spawn_timer > self.level_settings["spawn_interval"]:
+            self.spawn_timer = 0
+            if len(self.targets) < self.max_targets:
+                self.spawn_target()
 
-        if (random.random() < self.level_settings["spawn_rate"] and
-                len(self.classmates) < self.level_settings["max_classmates"]):
-            self.spawn_classmate()
+        for target in self.targets[:]:
+            target['x'] += math.cos(target['angle']) * target['speed'] * delta_time / 16.667
+            target['y'] += math.sin(target['angle']) * target['speed'] * 0.5 * delta_time / 16.667
+            target['rect'].center = (target['x'], target['y'])
 
-        self.time_left -= 1 / 60
+            if target['x'] < -100 or target['x'] > self.screen_width + 100:
+                self.targets.remove(target)
+
+    def update(self, delta_time):
+        self.update_bullets(delta_time)
+        self.update_targets(delta_time)
+
+        self.time_left -= delta_time / 1000
         if self.time_left <= 0:
             self.running = False
 
-    def spawn_classmate(self):
-        side = random.choice(['left', 'right'])
+    def spawn_target(self):
+        start_side = random.choice(['left', 'right'])
         image = random.choice(self.classmate_images)
         speed = self.level_settings["classmate_speed"]
+        y_base = random.randint(50, self.screen_height // 3)
 
-        new_classmate = {
-            'rect': pygame.Rect(-100 if side == 'left' else self.screen_width + 100,
-                                random.randint(50, self.screen_height - 50),
-                                image.get_width(),
-                                image.get_height()),
+        if start_side == 'left':
+            x = -50
+            angle = random.uniform(-0.5, 0.5)
+        else:
+            x = self.screen_width + 50
+            angle = random.uniform(math.pi - 0.5, math.pi + 0.5)
+
+        new_target = {
+            'rect': pygame.Rect(0, 0, image.get_width(), image.get_height()),
+            'x': x,
+            'y': y_base + math.sin(self.wave_angle) * 50,
+            'angle': angle,
             'speed': speed,
-            'direction': 1 if side == 'left' else -1,
             'image': image
         }
-        self.classmates.append(new_classmate)
+        self.targets.append(new_target)
 
     def render(self):
         self.screen.blit(self.background, (0, 0))
 
-        for classmate in self.classmates:
-            self.screen.blit(classmate['image'], classmate['rect'])
+        for target in self.targets:
+            rotated_image = pygame.transform.rotate(target['image'], math.degrees(-target['angle']))
+            self.screen.blit(rotated_image, target['rect'])
 
         for bullet in self.bullets:
             pygame.draw.circle(self.screen, (255, 0, 0),
-                               (int(bullet['pos'][0]), int(bullet['pos'][1])), 8)
+                               (int(bullet['pos'][0]), int(bullet['pos'][1])), 6)
 
-        pygame.draw.circle(self.screen, (100, 100, 100), self.gun_position, 20)
+        crosshair_rect = self.crosshair.get_rect(center=pygame.mouse.get_pos())
+        self.screen.blit(self.crosshair, crosshair_rect)
 
         self.draw_ui()
         pygame.display.flip()

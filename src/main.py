@@ -7,7 +7,7 @@ from scoreboard import Scoreboard
 
 def main():
     pygame.init()
-    screen_size = (1080, 1080)
+    screen_size = (1024, 1024)
     screen = pygame.display.set_mode(screen_size)
     pygame.display.set_caption("Classmate Chaos")
 
