@@ -5,14 +5,16 @@
             "spawn_interval": 1500,
             "classmate_speed": 2,
             "game_time": 60,
-            "max_classmates": 8
+            "max_classmates": 8,
+            "required_score": 500
         },
         {
             "name": "Hard",
             "spawn_interval": 800,
             "classmate_speed": 4,
             "game_time": 45,
-            "max_classmates": 15
+            "max_classmates": 15,
+            "required_score": 1000
         }
     ]
 }

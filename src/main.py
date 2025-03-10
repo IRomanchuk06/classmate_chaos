@@ -30,6 +30,7 @@ def main():
 
 
 def show_help_screen(screen):
+    screen_width, screen_height = screen.get_size()
     help_font = pygame.font.Font(None, 45)
     lines = [
         "How to Play:",
@@ -40,10 +41,10 @@ def show_help_screen(screen):
     ]
 
     screen.fill((0, 0, 0))
-    y_offset = 300
+    y_offset = screen_height // 3
     for line in lines:
         text_surface = help_font.render(line, True, (255, 255, 255))
-        text_rect = text_surface.get_rect(center=(540, y_offset))
+        text_rect = text_surface.get_rect(center=(screen_width // 2, y_offset))
         screen.blit(text_surface, text_rect)
         y_offset += 80
 
